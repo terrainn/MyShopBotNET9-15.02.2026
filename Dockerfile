@@ -8,11 +8,8 @@ RUN dotnet restore
 # Копируем все остальные файлы
 COPY . .
 
-# ЯВНО копируем appsettings.json (на всякий случай)
-COPY appsettings.json .
-COPY appsettings.Development.json .
-
-RUN dotnet publish -c Release -o out
+# ЯВНО указываем, какой проект публиковать
+RUN dotnet publish "MyShopBotNET9.csproj" -c Release -o out
 
 # Финальный образ
 FROM mcr.microsoft.com/dotnet/runtime:9.0
