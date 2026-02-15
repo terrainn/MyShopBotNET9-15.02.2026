@@ -9,25 +9,26 @@ using MyShopBotNET9.Handlers.Interfaces;
 using MyShopBotNET9.Services;
 using Telegram.Bot;
 using Microsoft.Extensions.Configuration;
-// В самом начале Main (после using)
-// Временно создаем клиента для очистки вебхука
-// Временно создаем клиента для принудительной очистки
+
+var builder = Host.CreateApplicationBuilder(args);
+
+// Временно создаем клиента для принудительной очистки (только если не в контейнере или для теста)
 try
 {
     var tempBotClient = new TelegramBotClient("8438099672:AAFi1sCFIiFa-Fz8nFheypmVecJajrHhbo8");
-    
+
     // Удаляем вебхук (на всякий случай)
     await tempBotClient.DeleteWebhookAsync();
     Console.WriteLine("✅ Webhook deleted");
-    
+
     // Получаем информацию о вебхуке
     var webhookInfo = await tempBotClient.GetWebhookInfoAsync();
     Console.WriteLine($"📊 Webhook info: URL='{webhookInfo.Url}', Pending updates={webhookInfo.PendingUpdateCount}");
-    
+
     // Принудительно сбрасываем все ожидающие обновления
     var updates = await tempBotClient.GetUpdatesAsync(offset: -1, timeout: 1);
     Console.WriteLine($"🔄 Dropped {updates.Length} pending updates");
-    
+
     Console.WriteLine("✅ Все конфликты очищены");
 }
 catch (Exception ex)
@@ -35,11 +36,10 @@ catch (Exception ex)
     Console.WriteLine($"⚠️ Ошибка при очистке: {ex.Message}");
 }
 
-var builder = Host.CreateApplicationBuilder(args);
-
 builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true);
+// .AddEnvironmentVariables(); // Добавь если нужно
 
 // --- 1. Конфигурация бота ---
 var botToken = builder.Configuration["TelegramBot:Token"];
@@ -48,6 +48,8 @@ if (string.IsNullOrEmpty(botToken))
     throw new Exception("Telegram Bot Token is missing in configuration!");
 }
 builder.Services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(botToken));
+
+// --- остальной код без изменений ---
 
 // --- 2. База данных (SQLite) ---
 builder.Services.AddDbContext<AppDbContext>(options =>

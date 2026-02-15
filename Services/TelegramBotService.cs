@@ -20,38 +20,38 @@ public class TelegramBotService
 
     public async Task StartBotAsync(CancellationToken ct = default)
     {
-    // Дополнительная проверка перед запуском
-    try
-    {
-        // Пробуем получить обновления с отрицательным offset, чтобы сбросить очередь
-        var oldUpdates = await _botClient.GetUpdatesAsync(-1, 100, 1, ct);
-        Console.WriteLine($"🧹 Очищено старых обновлений: {oldUpdates.Length}");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"⚠️ Ошибка при очистке старых обновлений: {ex.Message}");
-    }
+        // Дополнительная проверка перед запуском
+        try
+        {
+            // Пробуем получить обновления с отрицательным offset, чтобы сбросить очередь
+            var oldUpdates = await _botClient.GetUpdatesAsync(-1, cancellationToken: ct);
+            Console.WriteLine($"🧹 Очищено старых обновлений: {oldUpdates.Length}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ Ошибка при очистке старых обновлений: {ex.Message}");
+        }
 
-    var receiverOptions = new ReceiverOptions
-    {
-        AllowedUpdates = Array.Empty<UpdateType>(),
-        ThrowPendingUpdates = true,
-        Limit = 100,
-        DropPendingUpdates = true // КРИТИЧЕСКИ ВАЖНО!
-    };
+        var receiverOptions = new ReceiverOptions
+        {
+            AllowedUpdates = Array.Empty<UpdateType>(),
+            ThrowPendingUpdates = true,
+            Limit = 100
+            // DropPendingUpdates - удаляем, этой опции нет в версии 19.0.0
+        };
 
-    _botClient.StartReceiving(
-        updateHandler: HandleUpdateAsync,
-        pollingErrorHandler: HandlePollingErrorAsync,
-        receiverOptions: receiverOptions,
-        cancellationToken: ct
-    );
+        _botClient.StartReceiving(
+            updateHandler: HandleUpdateAsync,
+            pollingErrorHandler: HandlePollingErrorAsync,
+            receiverOptions: receiverOptions,
+            cancellationToken: ct
+        );
 
-    var me = await _botClient.GetMeAsync(ct);
-    Console.WriteLine($"🤖 Bot @{me.Username} started successfully!");
-    
-    // Дополнительно: проверяем, что только один экземпляр
-    Console.WriteLine($"📡 Bot is running in container: {Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true"}");
+        var me = await _botClient.GetMeAsync(ct);
+        Console.WriteLine($"🤖 Bot @{me.Username} started successfully!");
+
+        // Дополнительно: проверяем, что только один экземпляр
+        Console.WriteLine($"📡 Bot is running in container: {Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true"}");
     }
 
     private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken ct)
