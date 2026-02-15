@@ -9,6 +9,14 @@ using MyShopBotNET9.Handlers.Interfaces;
 using MyShopBotNET9.Services;
 using Telegram.Bot;
 using Microsoft.Extensions.Configuration;
+// В самом начале Main (после using)
+try
+{
+    var tempBotClient = new TelegramBotClient("8438099672:AAFi1sCFIiFa-Fz8nFheypmVecJajrHhbo8");
+    await tempBotClient.DeleteWebhookAsync();
+    Console.WriteLine("✅ Webhook cleared");
+}
+catch { }
 
 var builder = Host.CreateApplicationBuilder(args);
 
