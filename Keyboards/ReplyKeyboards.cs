@@ -1,0 +1,75 @@
+﻿using Telegram.Bot.Types.ReplyMarkups;
+
+namespace MyShopBotNET9.Keyboards;
+
+public static class ReplyKeyboards
+{
+    public static ReplyKeyboardMarkup GetCitySelectionKeyboard()
+    {
+        var cities = new List<string>
+        {
+            "Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань",
+            "Нижний Новгород", "Челябинск", "Самара", "Омск", "Ростов-на-Дону"
+        };
+
+        // Создаем кнопки по 2 в ряд
+        var keyboard = new List<KeyboardButton[]>();
+        for (int i = 0; i < cities.Count; i += 2)
+        {
+            var row = new List<KeyboardButton>
+            {
+                new(cities[i])
+            };
+
+            if (i + 1 < cities.Count)
+            {
+                row.Add(new KeyboardButton(cities[i + 1]));
+            }
+
+            keyboard.Add(row.ToArray());
+        }
+
+        return new ReplyKeyboardMarkup(keyboard)
+        {
+            ResizeKeyboard = true,
+            OneTimeKeyboard = true
+        };
+    }
+
+    public static ReplyKeyboardMarkup GetMainMenuKeyboard(string userCity)
+    {
+        var cityButtonText = string.IsNullOrEmpty(userCity) ? "🏙️ Выбрать город" : $"🏙️ Сменить город ({userCity})";
+
+        return new ReplyKeyboardMarkup(new[]
+        {
+            new KeyboardButton[] { "🛍️ Каталог товаров", "🛒 Моя корзина" },
+            new KeyboardButton[] { "📦 Мои заказы", "👤 Профиль" },
+            new KeyboardButton[] { cityButtonText }
+        })
+        {
+            ResizeKeyboard = true
+        };
+    }
+
+    public static ReplyKeyboardMarkup GetPhoneNumberKeyboard()
+    {
+        var button = new KeyboardButton("📱 Отправить номер телефона")
+        {
+            RequestContact = true
+        };
+
+        return new ReplyKeyboardMarkup(new[]
+        {
+            new KeyboardButton[] { button }
+        })
+        {
+            ResizeKeyboard = true,
+            OneTimeKeyboard = true
+        };
+    }
+
+    public static ReplyKeyboardRemove GetRemoveKeyboard()
+    {
+        return new ReplyKeyboardRemove();
+    }
+}
