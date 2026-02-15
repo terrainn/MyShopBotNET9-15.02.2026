@@ -10,13 +10,21 @@ using MyShopBotNET9.Services;
 using Telegram.Bot;
 using Microsoft.Extensions.Configuration;
 // В самом начале Main (после using)
+// Временно создаем клиента для очистки вебхука
 try
 {
     var tempBotClient = new TelegramBotClient("8438099672:AAFi1sCFIiFa-Fz8nFheypmVecJajrHhbo8");
     await tempBotClient.DeleteWebhookAsync();
     Console.WriteLine("✅ Webhook cleared");
+    
+    // Получаем информацию о боте
+    var webhookInfo = await tempBotClient.GetWebhookInfoAsync();
+    Console.WriteLine($"📊 Webhook info: URL={webhookInfo.Url}, Pending updates={webhookInfo.PendingUpdateCount}");
 }
-catch { }
+catch (Exception ex)
+{
+    Console.WriteLine($"❌ Error clearing webhook: {ex.Message}");
+}
 
 var builder = Host.CreateApplicationBuilder(args);
 
