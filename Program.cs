@@ -11,19 +11,28 @@ using Telegram.Bot;
 using Microsoft.Extensions.Configuration;
 // В самом начале Main (после using)
 // Временно создаем клиента для очистки вебхука
+// Временно создаем клиента для принудительной очистки
 try
 {
     var tempBotClient = new TelegramBotClient("8438099672:AAFi1sCFIiFa-Fz8nFheypmVecJajrHhbo8");
-    await tempBotClient.DeleteWebhookAsync();
-    Console.WriteLine("✅ Webhook cleared");
     
-    // Получаем информацию о боте
+    // Удаляем вебхук (на всякий случай)
+    await tempBotClient.DeleteWebhookAsync();
+    Console.WriteLine("✅ Webhook deleted");
+    
+    // Получаем информацию о вебхуке
     var webhookInfo = await tempBotClient.GetWebhookInfoAsync();
-    Console.WriteLine($"📊 Webhook info: URL={webhookInfo.Url}, Pending updates={webhookInfo.PendingUpdateCount}");
+    Console.WriteLine($"📊 Webhook info: URL='{webhookInfo.Url}', Pending updates={webhookInfo.PendingUpdateCount}");
+    
+    // Принудительно сбрасываем все ожидающие обновления
+    var updates = await tempBotClient.GetUpdatesAsync(offset: -1, timeout: 1);
+    Console.WriteLine($"🔄 Dropped {updates.Length} pending updates");
+    
+    Console.WriteLine("✅ Все конфликты очищены");
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"❌ Error clearing webhook: {ex.Message}");
+    Console.WriteLine($"⚠️ Ошибка при очистке: {ex.Message}");
 }
 
 var builder = Host.CreateApplicationBuilder(args);
