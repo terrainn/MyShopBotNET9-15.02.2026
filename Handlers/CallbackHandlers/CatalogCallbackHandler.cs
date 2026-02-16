@@ -200,6 +200,104 @@ public class CatalogCallbackHandler : ICallbackHandler
         }
     }
 
+    private async Task AddToCartAsync(CallbackQuery callback, MyUser user, int productId, decimal gram, int quantity, CancellationToken ct)
+    {
+        try
+        {
+            var product = await _catalogService.GetProductByIdAsync(productId);
+            if (product == null)
+            {
+                await _botClient.AnswerCallbackQueryAsync(callback.Id, "❌ Товар не найден", cancellationToken: ct);
+                return;
+            }
+
+            if (!product.GramPrices.ContainsKey(gram))
+            {
+                await _botClient.AnswerCallbackQueryAsync(callback.Id, "❌ Недоступная граммовка", cancellationToken: ct);
+                return;
+            }
+
+            if (product.StockQuantity < quantity)
+            {
+                await _botClient.AnswerCallbackQueryAsync(callback.Id, $"❌ В наличии только {product.StockQuantity} шт.", cancellationToken: ct);
+                return;
+            }
+
+            await _cartService.AddToCartAsync(user.Id, productId, quantity, gram);
+
+            product.StockQuantity -= quantity;
+            await _catalogService.UpdateProductAsync(product);
+
+            // Форматируем граммовку для сообщения пользователю
+            string gramDisplay = gram.ToString(CultureInfo.GetCultureInfo("ru-RU"));
+
+            await _botClient.AnswerCallbackQueryAsync(
+                callback.Id,
+                $"✅ {quantity} шт. по {gramDisplay}г добавлено в корзину",
+                cancellationToken: ct);
+
+            // ПОКАЗЫВАЕМ МЕНЮ ВЫБОРА: Корзина или Продолжить покупки
+            await ShowPostAddToCartMenuAsync(callback, user, product.Category ?? "Все", ct);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Error adding to cart: {ex.Message}");
+            await _botClient.AnswerCallbackQueryAsync(callback.Id, "❌ Ошибка добавления", cancellationToken: ct);
+        }
+    }
+
+    private async Task ShowPostAddToCartMenuAsync(CallbackQuery callback, MyUser user, string category, CancellationToken ct)
+    {
+        // Получаем актуальную информацию о корзине
+        var cartItems = await _cartService.GetCartItemsAsync(user.Id);
+        var cartTotal = await _cartService.GetCartTotalAsync(user.Id);
+        var cartCount = await _cartService.GetCartItemsCountAsync(user.Id);
+
+        // Формируем сообщение
+        string message = $"✅ **Товар добавлен в корзину!**\n\n" +
+                        $"📊 **В вашей корзине сейчас:**\n" +
+                        $"• Товаров: {cartCount} шт.\n" +
+                        $"• На сумму: {cartTotal}₽\n\n" +
+                        $"👇 **Что делаем дальше?**";
+
+        // Определяем callback для продолжения покупок
+        string continueShoppingCallback;
+
+        if (_lastCategory.TryGetValue(user.Id, out string? lastCategory) && !string.IsNullOrEmpty(lastCategory))
+        {
+            // Если есть сохраненная категория, возвращаемся к ней
+            continueShoppingCallback = $"category_{lastCategory}";
+        }
+        else
+        {
+            // Если нет - показываем все категории
+            continueShoppingCallback = "back_to_categories";
+        }
+
+        // Создаем клавиатуру с выбором
+        var keyboard = new InlineKeyboardMarkup(new[]
+        {
+            new[]  // Первый ряд
+            {
+                InlineKeyboardButton.WithCallbackData("🛒 Перейти в корзину", "show_cart"),
+                InlineKeyboardButton.WithCallbackData("📋 Продолжить покупки", continueShoppingCallback)
+            },
+            new[]  // Второй ряд
+            {
+                InlineKeyboardButton.WithCallbackData("⚡ Оформить заказ", "checkout"),
+                InlineKeyboardButton.WithCallbackData("🔙 В главное меню", "main_menu")
+            }
+        });
+
+        await _botClient.EditMessageTextAsync(
+            chatId: callback.Message!.Chat.Id,
+            messageId: callback.Message.MessageId,
+            text: message,
+            parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
+            replyMarkup: keyboard,
+            cancellationToken: ct);
+    }
+
     private async Task ShowCategoriesAsync(CallbackQuery callback, MyUser user, CancellationToken ct)
     {
         if (callback.Message == null) return;
@@ -318,51 +416,5 @@ public class CatalogCallbackHandler : ICallbackHandler
             replyMarkup: keyboard,
             parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
             cancellationToken: ct);
-    }
-
-    private async Task AddToCartAsync(CallbackQuery callback, MyUser user, int productId, decimal gram, int quantity, CancellationToken ct)
-    {
-        try
-        {
-            var product = await _catalogService.GetProductByIdAsync(productId);
-            if (product == null)
-            {
-                await _botClient.AnswerCallbackQueryAsync(callback.Id, "❌ Товар не найден", cancellationToken: ct);
-                return;
-            }
-
-            if (!product.GramPrices.ContainsKey(gram))
-            {
-                await _botClient.AnswerCallbackQueryAsync(callback.Id, "❌ Недоступная граммовка", cancellationToken: ct);
-                return;
-            }
-
-            if (product.StockQuantity < quantity)
-            {
-                await _botClient.AnswerCallbackQueryAsync(callback.Id, $"❌ В наличии только {product.StockQuantity} шт.", cancellationToken: ct);
-                return;
-            }
-
-            await _cartService.AddToCartAsync(user.Id, productId, quantity, gram);
-
-            product.StockQuantity -= quantity;
-            await _catalogService.UpdateProductAsync(product);
-
-            // Форматируем граммовку для сообщения пользователю
-            string gramDisplay = gram.ToString(CultureInfo.GetCultureInfo("ru-RU"));
-
-            await _botClient.AnswerCallbackQueryAsync(
-                callback.Id,
-                $"✅ {quantity} шт. по {gramDisplay}г добавлено в корзину",
-                cancellationToken: ct);
-
-            // Возвращаемся к выбору граммовок этого же товара
-            await ShowGramSelectionAsync(callback, productId, ct);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"❌ Error adding to cart: {ex.Message}");
-            await _botClient.AnswerCallbackQueryAsync(callback.Id, "❌ Ошибка добавления", cancellationToken: ct);
-        }
     }
 }
