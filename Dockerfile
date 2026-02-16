@@ -1,20 +1,21 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
-WORKDIR /app
-
-COPY *.csproj .
-RUN dotnet restore
-
+WORKDIR /src
 COPY . .
-RUN dotnet publish "MyShopBotNET9.csproj" -c Release -o out
+RUN dotnet restore
+RUN dotnet publish -c Release -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/runtime:9.0
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
 WORKDIR /app
 
-COPY --from=build /app/out .
-COPY --from=build /app/appsettings.json .
-COPY --from=build /app/appsettings.Development.json .
+# СОЗДАЕМ ПАПКУ ДЛЯ ДАННЫХ
+RUN mkdir -p /app/data
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD dotnet --info || exit 1
+COPY --from=build /app/publish .
 
-CMD ["dotnet", "MyShopBotNET9.dll"]
+# Указываем, что папка data будет volume
+VOLUME ["/app/data"]
+
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
+
+ENTRYPOINT ["dotnet", "MyShopBotNET9.dll"]

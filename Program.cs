@@ -11,7 +11,44 @@ using Telegram.Bot;
 using Microsoft.Extensions.Configuration;
 
 var builder = Host.CreateApplicationBuilder(args);
+// После настройки сервисов, перед host.RunAsync()
 
+// Проверяем доступность БД
+using (var scope = host.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    try
+    {
+        // Проверяем, можем ли подключиться
+        var canConnect = await dbContext.Database.CanConnectAsync();
+        Console.WriteLine($"📊 Проверка БД: {(canConnect ? "✅ доступна" : "❌ НЕ доступна")}");
+
+        // Применяем миграции
+        await dbContext.Database.MigrateAsync();
+        Console.WriteLine("✅ Миграции применены");
+
+        // Проверяем путь к файлу БД
+        var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+        Console.WriteLine($"📁 Путь к БД: {connectionString}");
+
+        // Для SQLite можно проверить существование файла
+        if (connectionString?.Contains("Data Source=") == true)
+        {
+            var dbPath = connectionString.Replace("Data Source=", "").Trim();
+            var fullPath = Path.IsPathRooted(dbPath)
+                ? dbPath
+                : Path.Combine(Directory.GetCurrentDirectory(), dbPath);
+
+            Console.WriteLine($"📁 Полный путь к файлу БД: {fullPath}");
+            Console.WriteLine($"📁 Файл существует: {File.Exists(fullPath)}");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Ошибка при проверке БД: {ex.Message}");
+    }
+}
 // Временно создаем клиента для принудительной очистки (только если не в контейнере или для теста)
 try
 {
@@ -52,8 +89,22 @@ builder.Services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(bot
 // --- остальной код без изменений ---
 
 // --- 2. База данных (SQLite) ---
+// Получаем строку подключения из конфигурации
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+if (string.IsNullOrEmpty(connectionString))
+{
+    // Если нет в конфиге, используем значение по умолчанию для разработки
+    connectionString = "Data Source=myshopbot.db";
+    Console.WriteLine("⚠️ Используется локальная БД: myshopbot.db");
+}
+else
+{
+    Console.WriteLine($"✅ Используется БД: {connectionString}");
+}
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=myshopbot.db"), ServiceLifetime.Scoped);
+    options.UseSqlite(connectionString), ServiceLifetime.Scoped);
 
 // --- 3. Основные бизнес-сервисы ---
 builder.Services.AddScoped<UserService>();
