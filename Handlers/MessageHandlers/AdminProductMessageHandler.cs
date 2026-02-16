@@ -6,6 +6,7 @@ using MyShopBotNET9.Data;
 using MyShopBotNET9.Handlers.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using MyUser = MyShopBotNET9.Models.User;
+using System.Globalization;
 
 namespace MyShopBotNET9.Handlers.MessageHandlers;
 
@@ -122,6 +123,7 @@ public class AdminProductMessageHandler : IMessageHandler
                 nextQuestion = "⚖️ Введите цены для разных граммовок в формате:\n" +
                               "грамм1:цена1, грамм2:цена2\n\n" +
                               "Пример: 0.5:800, 1:1500, 2:2800, 3:4000, 5:6500\n\n" +
+                              "Можно использовать как точку, так и запятую для дробных чисел.\n" +
                               "Если цена такая же как за 1г, можно не указывать";
                 success = true;
                 break;
@@ -146,7 +148,7 @@ public class AdminProductMessageHandler : IMessageHandler
                             IsActive = true
                         };
 
-                        product.GramPrices = parsedPrices; // ← ЭТО САМОЕ ВАЖНОЕ
+                        product.GramPrices = parsedPrices;
 
                         await _adminService.AddProductAsync(product);
                         _adminStateService.ClearProductState(user.Id);
@@ -180,7 +182,9 @@ public class AdminProductMessageHandler : IMessageHandler
                 {
                     await _botClient.SendTextMessageAsync(
                         message.Chat.Id,
-                        "❌ Неверный формат. Попробуйте еще раз:\n\nПример: 0.5:800, 1:1500, 2:2800",
+                        "❌ Неверный формат. Попробуйте еще раз:\n\n" +
+                        "Пример: 0.5:800, 1:1500, 2:2800, 3:4000, 5:6500\n\n" +
+                        "Можно использовать как точку, так и запятую.",
                         cancellationToken: ct);
                     return;
                 }
@@ -211,22 +215,74 @@ public class AdminProductMessageHandler : IMessageHandler
         }
     }
 
+    /// <summary>
+    /// Парсит строку с ценами для разных граммовок.
+    /// Поддерживает форматы: "0,5:800, 1:1500, 2:2800" или "0.5:800, 1:1500, 2:2800"
+    /// </summary>
     private Dictionary<decimal, decimal> ParseGramPrices(string input)
     {
         var result = new Dictionary<decimal, decimal>();
-        var parts = input.Split(',', StringSplitOptions.RemoveEmptyEntries);
 
-        foreach (var part in parts)
+        if (string.IsNullOrWhiteSpace(input))
+            return result;
+
+        // Разделяем по запятым (разделитель между парами)
+        var pairs = input.Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var pair in pairs)
         {
-            var pair = part.Split(':', StringSplitOptions.RemoveEmptyEntries);
-            if (pair.Length == 2)
+            // Разделяем на граммовку и цену по двоеточию
+            var keyValue = pair.Split(':', StringSplitOptions.RemoveEmptyEntries);
+
+            if (keyValue.Length != 2)
             {
-                if (decimal.TryParse(pair[0].Trim().Replace('.', ','), out decimal gram) &&
-                    decimal.TryParse(pair[1].Trim().Replace(' ', '0'), out decimal price))
+                Console.WriteLine($"❌ Пропускаем некорректную пару: '{pair}'");
+                continue;
+            }
+
+            // Очищаем от пробелов
+            string gramStr = keyValue[0].Trim();
+            string priceStr = keyValue[1].Trim();
+
+            // Заменяем запятую на точку для корректного парсинга с InvariantCulture
+            gramStr = gramStr.Replace(',', '.');
+
+            // Убираем все пробелы из цены
+            priceStr = priceStr.Replace(" ", "").Replace(",", ".");
+
+            Console.WriteLine($"🔧 Парсинг: граммовка '{gramStr}', цена '{priceStr}'");
+
+            // Парсим с инвариантной культурой (всегда используем точку как разделитель)
+            if (decimal.TryParse(gramStr,
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out decimal gram) &&
+                decimal.TryParse(priceStr,
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out decimal price))
+            {
+                // Проверяем, что граммовка положительная
+                if (gram > 0)
                 {
                     result[gram] = price;
+                    Console.WriteLine($"✅ Успешно: {gram}г = {price}₽");
+                }
+                else
+                {
+                    Console.WriteLine($"❌ Граммовка должна быть положительной: {gram}");
                 }
             }
+            else
+            {
+                Console.WriteLine($"❌ Не удалось распарсить: граммовка='{gramStr}', цена='{priceStr}'");
+            }
+        }
+
+        // Если ничего не распарсилось, но пользователь ввел что-то
+        if (result.Count == 0 && !string.IsNullOrWhiteSpace(input))
+        {
+            Console.WriteLine($"⚠️ Не удалось распарсить ни одной пары из: '{input}'");
         }
 
         return result;
@@ -255,6 +311,7 @@ public class AdminProductMessageHandler : IMessageHandler
                 fieldName = "название";
                 success = true;
                 break;
+
             case BotState.AdminWaitingForProductPrice:
                 if (decimal.TryParse(message.Text?.Replace(" ", "") ?? "", out decimal price))
                 {
@@ -266,21 +323,25 @@ public class AdminProductMessageHandler : IMessageHandler
                     success = true;
                 }
                 break;
+
             case BotState.AdminWaitingForProductDescription:
                 product.Description = message.Text;
                 fieldName = "описание";
                 success = true;
                 break;
+
             case BotState.AdminWaitingForProductCategory:
                 product.Category = message.Text;
                 fieldName = "категория";
                 success = true;
                 break;
+
             case BotState.AdminWaitingForProductCity:
                 product.City = message.Text;
                 fieldName = "город";
                 success = true;
                 break;
+
             case BotState.AdminWaitingForProductStock:
                 if (int.TryParse(message.Text, out int stock))
                 {
@@ -289,6 +350,7 @@ public class AdminProductMessageHandler : IMessageHandler
                     success = true;
                 }
                 break;
+
             case BotState.AdminWaitingForProductGramPrices:
                 var parsedPrices = ParseGramPrices(message.Text ?? "");
                 if (parsedPrices.Count > 0)
@@ -296,6 +358,13 @@ public class AdminProductMessageHandler : IMessageHandler
                     product.GramPrices = parsedPrices;
                     fieldName = "цены за граммовку";
                     success = true;
+
+                    // Выводим отладку
+                    Console.WriteLine($"✅ Обновлены цены для товара {productId}:");
+                    foreach (var p in parsedPrices)
+                    {
+                        Console.WriteLine($"   {p.Key}г -> {p.Value}₽");
+                    }
                 }
                 break;
         }
@@ -305,7 +374,8 @@ public class AdminProductMessageHandler : IMessageHandler
             await _context.SaveChangesAsync(ct);
             await _botClient.SendTextMessageAsync(
                 chatId: message.Chat.Id,
-                text: $"✅ {fieldName.ToUpperInvariant()} успешно обновлено!\n\nТовар: {product.Name}",
+                text: $"✅ **{fieldName.ToUpperInvariant()}** успешно обновлено!\n\nТовар: {product.Name}",
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
                 cancellationToken: ct);
         }
         else

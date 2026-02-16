@@ -74,7 +74,7 @@ public class CatalogCallbackHandler : ICallbackHandler
                     if (data.StartsWith("category_"))
                     {
                         var categoryName = data.Replace("category_", "");
-                        _lastCategory[user.Id] = categoryName; // Сохраняем категорию
+                        _lastCategory[user.Id] = categoryName;
                         await ShowCategoryProductsAsync(callback, categoryName, user, ct);
                     }
                     else if (data.StartsWith("product_"))
@@ -86,61 +86,11 @@ public class CatalogCallbackHandler : ICallbackHandler
                     }
                     else if (data.StartsWith("select_gram_"))
                     {
-                        var parts = data.Split('_');
-                        if (parts.Length == 4 &&
-                            int.TryParse(parts[2], out int productId))
-                        {
-                            // Пробуем распарсить с разными культурами
-                            string gramStr = parts[3];
-                            decimal gram;
-
-                            // Сначала пробуем как есть (с точкой)
-                            if (!decimal.TryParse(gramStr, NumberStyles.Any, CultureInfo.InvariantCulture, out gram))
-                            {
-                                // Если не получилось, пробуем с запятой
-                                decimal.TryParse(gramStr.Replace('.', ','), out gram);
-                            }
-
-                            if (gram > 0)
-                            {
-                                await ShowQuantitySelectionAsync(callback, productId, gram, ct);
-                            }
-                        }
+                        await HandleGramSelectionAsync(callback, data, ct);
                     }
                     else if (data.StartsWith("add_to_cart_"))
                     {
-                        var parts = data.Split('_');
-                        // add_to_cart_2_0.5_1
-                        Console.WriteLine($"🔧 Parsing add_to_cart: {data}, parts count: {parts.Length}");
-
-                        if (parts.Length >= 5)
-                        {
-                            if (int.TryParse(parts[3], out int productId))
-                            {
-                                // Последняя часть - количество
-                                if (int.TryParse(parts[parts.Length - 1], out int quantity))
-                                {
-                                    // Все, что между productId и quantity - это граммовка
-                                    string gramStr = string.Join("_", parts.Skip(4).Take(parts.Length - 5));
-                                    if (string.IsNullOrEmpty(gramStr))
-                                    {
-                                        gramStr = parts[4];
-                                    }
-
-                                    Console.WriteLine($"🔧 Gram string: '{gramStr}'");
-
-                                    // Парсим с инвариантной культурой (точка)
-                                    if (decimal.TryParse(gramStr,
-                                        System.Globalization.NumberStyles.Any,
-                                        System.Globalization.CultureInfo.InvariantCulture,
-                                        out decimal gram))
-                                    {
-                                        Console.WriteLine($"🔧 Parsed gram: {gram}");
-                                        await AddToCartAsync(callback, user, productId, gram, quantity, ct);
-                                    }
-                                }
-                            }
-                        }
+                        await HandleAddToCartAsync(callback, user, data, ct);
                     }
                     break;
             }
@@ -159,6 +109,94 @@ public class CatalogCallbackHandler : ICallbackHandler
                 Console.WriteLine($"❌ Error in CatalogCallbackHandler: {ex.Message}");
                 await _botClient.AnswerCallbackQueryAsync(callback.Id, "❌ Произошла ошибка", cancellationToken: ct);
             }
+        }
+    }
+
+    private async Task HandleGramSelectionAsync(CallbackQuery callback, string data, CancellationToken ct)
+    {
+        var parts = data.Split('_');
+        if (parts.Length != 4) return;
+
+        if (!int.TryParse(parts[2], out int productId))
+            return;
+
+        string gramStr = parts[3];
+
+        // Заменяем возможную запятую на точку для парсинга
+        gramStr = gramStr.Replace(',', '.');
+
+        Console.WriteLine($"🔧 Парсинг граммовки: исходная строка '{parts[3]}', после замены '{gramStr}'");
+
+        if (decimal.TryParse(gramStr,
+            NumberStyles.Any,
+            CultureInfo.InvariantCulture,
+            out decimal gram) && gram > 0)
+        {
+            Console.WriteLine($"✅ Граммовка распознана: {gram}г");
+            await ShowQuantitySelectionAsync(callback, productId, gram, ct);
+        }
+        else
+        {
+            Console.WriteLine($"❌ Не удалось распарсить граммовку: '{gramStr}'");
+            await _botClient.AnswerCallbackQueryAsync(
+                callback.Id,
+                "❌ Ошибка в формате граммовки",
+                cancellationToken: ct);
+        }
+    }
+
+    private async Task HandleAddToCartAsync(CallbackQuery callback, MyUser user, string data, CancellationToken ct)
+    {
+        var parts = data.Split('_');
+        // Формат: add_to_cart_{productId}_{gram}_{quantity}
+        // Пример: add_to_cart_2_0.5_1 или add_to_cart_2_0,5_1
+
+        Console.WriteLine($"🔧 Парсинг add_to_cart: {data}, частей: {parts.Length}");
+
+        if (parts.Length < 5) return;
+
+        if (!int.TryParse(parts[3], out int productId))
+        {
+            Console.WriteLine($"❌ Не удалось распарсить productId: '{parts[3]}'");
+            return;
+        }
+
+        // Последняя часть - количество
+        if (!int.TryParse(parts[parts.Length - 1], out int quantity))
+        {
+            Console.WriteLine($"❌ Не удалось распарсить quantity: '{parts[parts.Length - 1]}'");
+            return;
+        }
+
+        // Все, что между productId и quantity - это граммовка (может содержать точки или запятые)
+        string gramStr = string.Join("_", parts.Skip(4).Take(parts.Length - 5));
+        if (string.IsNullOrEmpty(gramStr))
+        {
+            gramStr = parts[4];
+        }
+
+        Console.WriteLine($"🔧 Строка граммовки до обработки: '{gramStr}'");
+
+        // Заменяем запятую на точку
+        gramStr = gramStr.Replace(',', '.');
+
+        Console.WriteLine($"🔧 Строка граммовки после замены: '{gramStr}'");
+
+        if (decimal.TryParse(gramStr,
+            NumberStyles.Any,
+            CultureInfo.InvariantCulture,
+            out decimal gram) && gram > 0)
+        {
+            Console.WriteLine($"✅ Успешно распарсено: productId={productId}, gram={gram}, quantity={quantity}");
+            await AddToCartAsync(callback, user, productId, gram, quantity, ct);
+        }
+        else
+        {
+            Console.WriteLine($"❌ Не удалось распарсить граммовку: '{gramStr}'");
+            await _botClient.AnswerCallbackQueryAsync(
+                callback.Id,
+                "❌ Ошибка в формате граммовки",
+                cancellationToken: ct);
         }
     }
 
@@ -256,14 +294,18 @@ public class CatalogCallbackHandler : ICallbackHandler
 
         if (!product.GramPrices.ContainsKey(gram))
         {
-            Console.WriteLine($"❌ Gram {gram} not found in product prices");
+            Console.WriteLine($"❌ Gram {gram} not found in product prices. Доступные граммовки: {string.Join(", ", product.GramPrices.Keys)}");
             await _botClient.AnswerCallbackQueryAsync(callback.Id, "❌ Недоступная граммовка", cancellationToken: ct);
             return;
         }
 
         var price = product.GramPrices[gram];
+
+        // Форматируем граммовку для отображения (с запятой для русских пользователей)
+        string gramDisplay = gram.ToString(CultureInfo.GetCultureInfo("ru-RU"));
+
         var text = $"🎁 **{product.Name}**\n" +
-                  $"⚖️ {gram}г\n" +
+                  $"⚖️ {gramDisplay}г\n" +
                   $"💰 {price}₽ за шт.\n\n" +
                   $"Выберите количество:";
 
@@ -306,9 +348,12 @@ public class CatalogCallbackHandler : ICallbackHandler
             product.StockQuantity -= quantity;
             await _catalogService.UpdateProductAsync(product);
 
+            // Форматируем граммовку для сообщения пользователю
+            string gramDisplay = gram.ToString(CultureInfo.GetCultureInfo("ru-RU"));
+
             await _botClient.AnswerCallbackQueryAsync(
                 callback.Id,
-                $"✅ {quantity} шт. по {gram}г добавлено в корзину",
+                $"✅ {quantity} шт. по {gramDisplay}г добавлено в корзину",
                 cancellationToken: ct);
 
             // Возвращаемся к выбору граммовок этого же товара
